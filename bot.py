@@ -1,9 +1,8 @@
 import os
 import pandas as pd
-from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
@@ -44,6 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+# --- Démarrage du flow Accéder au Bonus ---
 async def handle_start_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -56,6 +56,7 @@ async def handle_start_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# --- Gestion du choix "As-tu un compte ?" ---
 async def handle_account_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -78,6 +79,7 @@ async def handle_account_choice(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return ConversationHandler.END
 
+# --- Demande du pseudo ---
 async def ask_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["pseudo"] = update.message.text
     keyboard = [
@@ -90,6 +92,7 @@ async def ask_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# --- Gestion du choix "As-tu effectué ton dépôt ?" ---
 async def handle_deposit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -126,6 +129,7 @@ async def handle_deposit_choice(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+# --- Redemander le dépôt ---
 async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -144,44 +148,34 @@ async def handle_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.message.reply_text("🔄 D'accord ! Quel est ton pseudo Stake ? 😎")
 
+def main():
+    app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 
-# --- Flask + Webhook ---
-app_flask = Flask(__name__)
-TOKEN = os.getenv("BOT_TOKEN")
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(handle_start_bonus, pattern="^start_bonus$")],
+        states={
+            ASK_PSEUDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_deposit)],
+        },
+        fallbacks=[],
+    )
 
-application = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(handle_account_choice, pattern="^(yes_account|no_account)$"))
+    app.add_handler(CallbackQueryHandler(handle_deposit_choice, pattern="^(deposit_yes|deposit_no)$"))
+    app.add_handler(CallbackQueryHandler(handle_edit_info, pattern="^edit_info$"))
+    app.add_handler(CallbackQueryHandler(handle_restart, pattern="^restart_procedure$"))
 
-conv_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(handle_start_bonus, pattern="^start_bonus$")],
-    states={
-        ASK_PSEUDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_deposit)],
-    },
-    fallbacks=[],
-)
+    # --- Utilisation du Webhook sur Render ---
+    PORT = int(os.getenv("PORT", 8080))
+    WEBHOOK_URL = "https://stake-bot-41sp.onrender.com"  # <<< Ton URL Render ici
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(conv_handler)
-application.add_handler(CallbackQueryHandler(handle_account_choice, pattern="^(yes_account|no_account)$"))
-application.add_handler(CallbackQueryHandler(handle_deposit_choice, pattern="^(deposit_yes|deposit_no)$"))
-application.add_handler(CallbackQueryHandler(handle_edit_info, pattern="^edit_info$"))
-application.add_handler(CallbackQueryHandler(handle_restart, pattern="^restart_procedure$"))
-
-@app_flask.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "OK", 200
-
-@app_flask.route("/")
-def set_webhook():
-    url = os.getenv("RENDER_EXTERNAL_URL")  # URL de ton Render
-    application.bot.set_webhook(url + f"/{TOKEN}")
-    return "Webhook set !", 200
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=os.getenv("BOT_TOKEN"),
+        webhook_url=f"{WEBHOOK_URL}/{os.getenv('BOT_TOKEN')}"
+    )
 
 if __name__ == "__main__":
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        url_path=TOKEN
-    )
-    app_flask.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    main()
