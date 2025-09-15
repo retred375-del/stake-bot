@@ -149,7 +149,7 @@ async def handle_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("🔄 D'accord ! Quel est ton pseudo Stake ? 😎")
 
 def main():
-    app = ApplicationBuilder().token("7710449892:AAHgt5Dcp8N-b-VpxcPrX4nTLuc5CN4pWVU").build()
+    app = ApplicationBuilder().token("BOT_TOKEN").build()
 
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(handle_start_bonus, pattern="^start_bonus$")],
