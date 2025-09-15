@@ -1,8 +1,9 @@
 import os
 import pandas as pd
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
@@ -33,8 +34,8 @@ def enregistrer_utilisateur(user_id, pseudo, depot):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎁 Accéder aux bonus", callback_data="start_bonus")],
-        [InlineKeyboardButton("❓ J'ai besoin d'aide", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))],  # MINI APP 1
-        [InlineKeyboardButton("⭐ Découvrir les avantages de Stake", web_app=WebAppInfo(url="https://fastidious-belekoy-099b4e.netlify.app/"))]  # MINI APP 2
+        [InlineKeyboardButton("❓ J'ai besoin d'aide", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))],
+        [InlineKeyboardButton("⭐ Découvrir les avantages de Stake", web_app=WebAppInfo(url="https://fastidious-belekoy-099b4e.netlify.app/"))]
     ]
 
     with open("image_stake.png", "rb") as photo:
@@ -43,7 +44,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# --- Démarrage du flow Accéder au Bonus ---
 async def handle_start_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -56,7 +56,6 @@ async def handle_start_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Gestion du choix "As-tu un compte ?" ---
 async def handle_account_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -66,7 +65,7 @@ async def handle_account_choice(update: Update, context: ContextTypes.DEFAULT_TY
         return ASK_PSEUDO
     else:
         keyboard = [
-            [InlineKeyboardButton("❓ Tutoriel VPN", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))],  # MINI APP 1
+            [InlineKeyboardButton("❓ Tutoriel VPN", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))],
             [InlineKeyboardButton("✅ Reprendre la procédure", callback_data="restart_procedure")]
         ]
         await query.message.reply_text(
@@ -79,7 +78,6 @@ async def handle_account_choice(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return ConversationHandler.END
 
-# --- Demande du pseudo ---
 async def ask_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["pseudo"] = update.message.text
     keyboard = [
@@ -92,7 +90,6 @@ async def ask_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# --- Gestion du choix "As-tu effectué ton dépôt ?" ---
 async def handle_deposit_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -122,14 +119,13 @@ async def handle_deposit_choice(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data == "deposit_no":
         keyboard = [
             [InlineKeyboardButton("✅ Reprendre la procédure", callback_data="restart_procedure")],
-            [InlineKeyboardButton("❓ J'ai besoin d'aide pour dépôt", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))]  # MINI APP 1
+            [InlineKeyboardButton("❓ J'ai besoin d'aide pour dépôt", web_app=WebAppInfo(url="https://musical-mooncake-272da9.netlify.app/"))]
         ]
         await query.message.reply_text(
             "Effectue ton dépôt, et utilise le bouton ci-dessous pour reprendre la procédure. 😎",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# --- Redemander le dépôt ---
 async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -148,25 +144,44 @@ async def handle_edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.message.reply_text("🔄 D'accord ! Quel est ton pseudo Stake ? 😎")
 
-def main():
-    app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(handle_start_bonus, pattern="^start_bonus$")],
-        states={
-            ASK_PSEUDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_deposit)],
-        },
-        fallbacks=[],
-    )
+# --- Flask + Webhook ---
+app_flask = Flask(__name__)
+TOKEN = os.getenv("BOT_TOKEN")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(handle_account_choice, pattern="^(yes_account|no_account)$"))
-    app.add_handler(CallbackQueryHandler(handle_deposit_choice, pattern="^(deposit_yes|deposit_no)$"))
-    app.add_handler(CallbackQueryHandler(handle_edit_info, pattern="^edit_info$"))
-    app.add_handler(CallbackQueryHandler(handle_restart, pattern="^restart_procedure$"))
+application = Application.builder().token(TOKEN).build()
 
-    app.run_polling()
+conv_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(handle_start_bonus, pattern="^start_bonus$")],
+    states={
+        ASK_PSEUDO: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_deposit)],
+    },
+    fallbacks=[],
+)
+
+application.add_handler(CommandHandler("start", start))
+application.add_handler(conv_handler)
+application.add_handler(CallbackQueryHandler(handle_account_choice, pattern="^(yes_account|no_account)$"))
+application.add_handler(CallbackQueryHandler(handle_deposit_choice, pattern="^(deposit_yes|deposit_no)$"))
+application.add_handler(CallbackQueryHandler(handle_edit_info, pattern="^edit_info$"))
+application.add_handler(CallbackQueryHandler(handle_restart, pattern="^restart_procedure$"))
+
+@app_flask.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.update_queue.put_nowait(update)
+    return "OK", 200
+
+@app_flask.route("/")
+def set_webhook():
+    url = os.getenv("RENDER_EXTERNAL_URL")  # URL de ton Render
+    application.bot.set_webhook(url + f"/{TOKEN}")
+    return "Webhook set !", 200
 
 if __name__ == "__main__":
-    main()
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        url_path=TOKEN
+    )
+    app_flask.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

@@ -1,1 +1,2 @@
-worker: bash start.sh
+web: bot.py
+
